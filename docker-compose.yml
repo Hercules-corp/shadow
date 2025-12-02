@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: shadow-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: shadow
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shadow-backend
+    environment:
+      DATABASE_URL: mongodb://mongodb:27017/shadow
+      SOLANA_RPC_URL: https://api.devnet.solana.com
+      SOLANA_WS_URL: wss://api.devnet.solana.com
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - cargo-cache:/usr/local/cargo/registry
+    command: cargo run --release
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: shadow-frontend
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8080
+      NEXT_PUBLIC_SOLANA_RPC_URL: https://api.devnet.solana.com
+      NEXT_PUBLIC_SOLANA_WS_URL: wss://api.devnet.solana.com
+      NEXT_PUBLIC_PRIVY_APP_ID: ${PRIVY_APP_ID:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  mongodb_data:
+  cargo-cache:
+

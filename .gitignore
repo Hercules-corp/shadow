@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+target/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Solana
+*.json
+!tsconfig.json
+test-ledger/
+.anchor/
+
+# Next.js
+.next/
+out/
+
+# Database
+*.db
+*.sqlite
+
+# Rust
+**/*.rs.bk
+Cargo.lock
+
+# TypeScript
+*.tsbuildinfo
+

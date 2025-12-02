@@ -1,0 +1,21 @@
+[toolchain]
+anchor_version = "0.29.0"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+shadow_registry = "7Y8Zx9qR3sN2mP1wV5tU4fG6hK8jL0dA"
+shadow_profiles = "8Z9Ax0rS4tN3nQ2xW6uV5gH7iL9kM1eB"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
