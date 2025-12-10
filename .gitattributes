@@ -1,0 +1,16 @@
+# Highlight Rust as primary; de-emphasize generated/vendor/docs for linguist
+sdk/node_modules/** linguist-vendored
+sdk/dist/**        linguist-vendored
+**/*.md            linguist-documentation
+**/target/**       linguist-vendored
+**/build/**        linguist-vendored
+**/dist/**         linguist-vendored
+**/coverage/**     linguist-vendored
+
+# Keep core sources detectable
+backend/**         linguist-detectable
+crates/**          linguist-detectable
+app/src/**         linguist-detectable
+sdk/src/**         linguist-detectable
+
+
