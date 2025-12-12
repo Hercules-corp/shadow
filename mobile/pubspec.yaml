@@ -1,0 +1,40 @@
+name: shadow_mobile
+description: Shadow Browser - Mobile App (Flutter)
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Solana
+  solana: ^0.2.0
+  ed25519_edwards: ^0.2.0
+  
+  # Crypto & Storage
+  pointycastle: ^3.7.3
+  crypto: ^3.0.3
+  shared_preferences: ^2.2.2
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # UI
+  cupertino_icons: ^1.0.6
+  flutter_animate: ^4.3.0
+  
+  # Networking
+  http: ^1.1.2
+  dio: ^5.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
