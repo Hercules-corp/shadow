@@ -12,5 +12,15 @@ backend/**         linguist-detectable
 crates/**          linguist-detectable
 app/src/**         linguist-detectable
 sdk/src/**         linguist-detectable
+mobile/lib/**      linguist-detectable
+desktop/src/**     linguist-detectable
+
+# Explicitly mark Dart files for Flutter
+**/*.dart           linguist-detectable
+
+# De-emphasize mobile/desktop build artifacts
+mobile/.dart_tool/** linguist-vendored
+mobile/build/**     linguist-vendored
+desktop/node_modules/** linguist-vendored
 
 
