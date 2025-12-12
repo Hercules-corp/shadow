@@ -9,6 +9,11 @@ mod ares;
 mod olympus;
 mod apollo;
 mod artemis;
+mod athena;
+mod chronos;
+mod prometheus;
+mod hephaestus;
+mod utils;
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
@@ -73,8 +78,7 @@ async fn main() -> anyhow::Result<()> {
     let solana_rpc_clone = solana_rpc_url.clone();
     let solana_ws_clone = solana_ws_url.clone();
     
-    // Initialize Olympus CA (domain system)
-    let olympus = olympus::OlympusCA::new((*db_clone).clone());
+    // Initialize Olympus CA (domain system) - will be created per request
     
     // Initialize Ares (authentication)
     let ares = Arc::new(ares::AresAuth::new());
@@ -84,6 +88,18 @@ async fn main() -> anyhow::Result<()> {
     
     // Initialize Apollo (validation)
     let apollo = Arc::new(apollo::ApolloValidator::new());
+    
+    // Initialize Athena (search indexing)
+    let athena = Arc::new(athena::AthenaIndexer::new((*db_clone).clone()));
+    
+    // Initialize Chronos (history/bookmarks)
+    let chronos = Arc::new(chronos::ChronosManager::new((*db_clone).clone()));
+    
+    // Initialize Prometheus (analytics)
+    let prometheus = Arc::new(prometheus::PrometheusAnalytics::new((*db_clone).clone()));
+    
+    // Initialize Hephaestus (caching)
+    let hephaestus = Arc::new(hephaestus::HephaestusCache::new(512, 3600)); // 512MB cache, 1hr TTL
     
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -104,6 +120,10 @@ async fn main() -> anyhow::Result<()> {
             .app_data(web::Data::from(Arc::clone(&artemis)))
             .app_data(web::Data::from(Arc::clone(&apollo)))
             .app_data(web::Data::new(olympus::OlympusCA::new((*db_clone).clone())))
+            .app_data(web::Data::from(Arc::clone(&athena)))
+            .app_data(web::Data::from(Arc::clone(&chronos)))
+            .app_data(web::Data::from(Arc::clone(&prometheus)))
+            .app_data(web::Data::from(Arc::clone(&hephaestus)))
             .service(
                 web::scope("/api")
                     .route("/health", web::get().to(api::health))
@@ -126,6 +146,25 @@ async fn main() -> anyhow::Result<()> {
                     .route("/domains/{domain}", web::put().to(handlers::update_domain))
                     .route("/domains/{domain}/verify", web::post().to(handlers::verify_domain))
                     .route("/domains/owner/{wallet}", web::get().to(handlers::list_owner_domains))
+                    // Athena search endpoints
+                    .route("/search", web::get().to(handlers::search_content))
+                    .route("/search/index", web::post().to(handlers::index_content))
+                    // Chronos history/bookmarks endpoints
+                    .route("/history", web::get().to(handlers::get_history))
+                    .route("/history", web::post().to(handlers::record_visit))
+                    .route("/history", web::delete().to(handlers::clear_history))
+                    .route("/bookmarks", web::get().to(handlers::get_bookmarks))
+                    .route("/bookmarks", web::post().to(handlers::add_bookmark))
+                    .route("/bookmarks/{domain}", web::delete().to(handlers::remove_bookmark))
+                    .route("/sessions", web::post().to(handlers::create_session))
+                    .route("/sessions/active", web::get().to(handlers::get_active_sessions))
+                    // Prometheus analytics endpoints
+                    .route("/analytics/{domain}", web::get().to(handlers::get_analytics))
+                    .route("/analytics/top", web::get().to(handlers::get_top_sites))
+                    .route("/analytics/performance", web::post().to(handlers::record_performance))
+                    // Hephaestus cache endpoints
+                    .route("/cache/stats", web::get().to(handlers::get_cache_stats))
+                    .route("/cache/clear", web::post().to(handlers::clear_cache))
                     .route("/ws", web::get().to(websocket::ws_handler))
             )
     })

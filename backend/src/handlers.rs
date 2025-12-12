@@ -7,8 +7,13 @@ use crate::ares::{AresAuth, AuthHeader};
 use crate::apollo::ApolloValidator;
 use crate::artemis::ArtemisRateLimiter;
 use crate::olympus::OlympusCA;
+use crate::athena::AthenaIndexer;
+use crate::chronos::ChronosManager;
+use crate::prometheus::PrometheusAnalytics;
+use crate::hephaestus::HephaestusCache;
 use serde::{Deserialize, Serialize};
 use mongodb::Database;
+use std::time::Duration;
 
 #[derive(Deserialize)]
 pub struct CreateProfileRequest {
@@ -522,4 +527,345 @@ pub async fn list_owner_domains(
         .map_err(|e| ShadowError::BadRequest(e))?;
 
     Ok(HttpResponse::Ok().json(domains))
+}
+
+// ========== Athena Search Handlers ==========
+
+#[derive(Deserialize)]
+pub struct IndexContentRequest {
+    pub domain: String,
+    pub program_address: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content: String,
+}
+
+pub async fn search_content(
+    athena: web::Data<AthenaIndexer>,
+    query: web::Query<SearchQuery>,
+    apollo: web::Data<ApolloValidator>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    ApolloValidator::validate_search_query(&query.q)?;
+    let limit = ApolloValidator::validate_limit(query.limit)?;
+    
+    let results = athena.search(&query.q, limit).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(results))
+}
+
+pub async fn index_content(
+    athena: web::Data<AthenaIndexer>,
+    body: web::Json<IndexContentRequest>,
+    apollo: web::Data<ApolloValidator>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    ApolloValidator::validate_domain(&body.domain)?;
+    ApolloValidator::validate_pubkey(&body.program_address)?;
+    
+    athena.index_site(
+        &body.domain,
+        &body.program_address,
+        body.title.as_deref(),
+        body.description.as_deref(),
+        &body.content,
+    ).await
+    .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+// ========== Chronos History/Bookmarks Handlers ==========
+
+#[derive(Deserialize)]
+pub struct RecordVisitRequest {
+    pub domain: String,
+    pub program_address: String,
+    pub title: Option<String>,
+    pub time_spent_seconds: u64,
+}
+
+pub async fn get_history(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    query: web::Query<SearchQuery>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let limit = query.limit.unwrap_or(50);
+    let history = chronos.get_history(&auth.wallet, limit).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(history))
+}
+
+pub async fn record_visit(
+    chronos: web::Data<ChronosManager>,
+    prometheus: web::Data<PrometheusAnalytics>,
+    ares: web::Data<AresAuth>,
+    body: web::Json<RecordVisitRequest>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let time_spent = Duration::from_secs(body.time_spent_seconds);
+    chronos.record_visit(
+        &auth.wallet,
+        &body.domain,
+        &body.program_address,
+        body.title.as_deref(),
+        time_spent,
+    ).await
+    .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    prometheus.record_visit(
+        &body.domain,
+        &body.program_address,
+        &auth.wallet,
+        body.time_spent_seconds as f64,
+    ).await
+    .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+pub async fn clear_history(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    chronos.clear_history(&auth.wallet).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct AddBookmarkRequest {
+    pub domain: String,
+    pub program_address: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub folder: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+pub async fn get_bookmarks(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    query: web::Query<SearchQuery>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let folder = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    let bookmarks = chronos.get_bookmarks(&auth.wallet, folder).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(bookmarks))
+}
+
+pub async fn add_bookmark(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    body: web::Json<AddBookmarkRequest>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    chronos.add_bookmark(
+        &auth.wallet,
+        &body.domain,
+        &body.program_address,
+        body.title.as_deref(),
+        body.description.as_deref(),
+        body.folder.as_deref(),
+        body.tags.clone().unwrap_or_default(),
+    ).await
+    .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+pub async fn remove_bookmark(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let domain = path.into_inner();
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    chronos.remove_bookmark(&auth.wallet, &domain).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+pub async fn create_session(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let session_id = chronos.create_session(&auth.wallet).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "session_id": session_id
+    })))
+}
+
+pub async fn get_active_sessions(
+    chronos: web::Data<ChronosManager>,
+    ares: web::Data<AresAuth>,
+    req: HttpRequest,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let auth_header = req.headers().get("X-Shadow-Auth")
+        .ok_or_else(|| ShadowError::Unauthorized)?
+        .to_str()
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let auth = AuthHeader::from_header(auth_header)?;
+    auth.verify(&ares)
+        .map_err(|_| ShadowError::Unauthorized)?;
+    
+    let sessions = chronos.get_active_sessions(&auth.wallet).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(sessions))
+}
+
+// ========== Prometheus Analytics Handlers ==========
+
+pub async fn get_analytics(
+    prometheus: web::Data<PrometheusAnalytics>,
+    path: web::Path<String>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let domain = path.into_inner();
+    let analytics = prometheus.get_analytics(&domain).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    match analytics {
+        Some(analytics) => Ok(HttpResponse::Ok().json(analytics)),
+        None => Err(ShadowError::NotFound("Analytics not found".to_string())),
+    }
+}
+
+pub async fn get_top_sites(
+    prometheus: web::Data<PrometheusAnalytics>,
+    query: web::Query<SearchQuery>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let limit = query.limit.unwrap_or(10);
+    let sites = prometheus.get_top_sites(limit).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(sites))
+}
+
+#[derive(Deserialize)]
+pub struct RecordPerformanceRequest {
+    pub domain: String,
+    pub load_time_ms: f64,
+    pub render_time_ms: f64,
+    pub total_size_bytes: i64,
+    pub request_count: i32,
+}
+
+pub async fn record_performance(
+    prometheus: web::Data<PrometheusAnalytics>,
+    body: web::Json<RecordPerformanceRequest>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    prometheus.record_performance(
+        &body.domain,
+        body.load_time_ms,
+        body.render_time_ms,
+        body.total_size_bytes,
+        body.request_count,
+    ).await
+    .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
+}
+
+// ========== Hephaestus Cache Handlers ==========
+
+pub async fn get_cache_stats(
+    hephaestus: web::Data<HephaestusCache>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    let stats = hephaestus.get_stats().await;
+    Ok(HttpResponse::Ok().json(stats))
+}
+
+pub async fn clear_cache(
+    hephaestus: web::Data<HephaestusCache>,
+) -> ActixResult<HttpResponse, ShadowError> {
+    hephaestus.clear().await;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
 }
