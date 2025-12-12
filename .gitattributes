@@ -7,12 +7,17 @@ sdk/dist/**        linguist-vendored
 **/dist/**         linguist-vendored
 **/coverage/**     linguist-vendored
 
-# Keep core sources detectable
+# Keep core sources detectable - Rust prioritized
 backend/**         linguist-detectable
+backend/**/*.rs    linguist-language=Rust
 crates/**          linguist-detectable
+crates/**/*.rs     linguist-language=Rust
+backend/tests/**   linguist-detectable
+backend/tests/**/*.rs linguist-language=Rust
 app/src/**         linguist-detectable
 sdk/src/**         linguist-detectable
 mobile/lib/**      linguist-detectable
+mobile/lib/**/*.dart linguist-language=Dart
 desktop/src/**     linguist-detectable
 
 # Explicitly mark Dart files for Flutter

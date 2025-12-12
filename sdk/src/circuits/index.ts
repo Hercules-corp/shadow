@@ -5,8 +5,6 @@ export * from "./olympus"  // Domain registration
 export * from "./zeus"     // On-chain operations
 export * from "./apollo"   // Validation
 export * from "./ares"     // Authentication
-export * from "./poseidon" // Storage operations
-export * from "./athena"   // Knowledge/wisdom operations
-export * from "./hermes"   // Messaging/communication
+export * from "./poseidon-node" // Storage operations (Node.js)
 
 

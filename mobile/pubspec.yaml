@@ -29,6 +29,9 @@ dependencies:
   # Networking
   http: ^1.1.2
   dio: ^5.4.0
+  
+  # Additional utilities
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
