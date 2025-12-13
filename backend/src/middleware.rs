@@ -1,14 +1,15 @@
 // Middleware for Shadow backend - Request processing and logging
 use actix_web::{
     dev::{ServiceRequest, ServiceResponse},
-    Error, HttpMessage,
+    Error, HttpMessage, web,
 };
 use actix_web::middleware::Next;
 use actix_web::http::header::{HeaderName, HeaderValue};
 use std::time::Instant;
 use tracing::{info, warn};
+use crate::metrics::MetricsCollector;
 
-/// Request timing middleware
+/// Request timing middleware with metrics collection
 pub async fn timing_middleware(
     req: ServiceRequest,
     next: Next<impl actix_web::body::MessageBody>,
@@ -17,10 +18,20 @@ pub async fn timing_middleware(
     let path = req.path().to_string();
     let method = req.method().to_string();
     
+    // Get metrics before calling next (which moves req)
+    let metrics_opt = req.app_data::<web::Data<MetricsCollector>>().cloned();
+    
     let res = next.call(req).await?;
     
     let duration = start_time.elapsed();
     let status = res.status().as_u16();
+    let success = status < 400;
+    let duration_ms = duration.as_millis() as u64;
+    
+    // Record metrics if available
+    if let Some(metrics) = metrics_opt {
+        metrics.record_request(success, duration_ms, &path);
+    }
     
     if status >= 400 {
         warn!(
@@ -28,7 +39,7 @@ pub async fn timing_middleware(
             method,
             path,
             status,
-            duration.as_millis()
+            duration_ms
         );
     } else {
         info!(
@@ -36,7 +47,7 @@ pub async fn timing_middleware(
             method,
             path,
             status,
-            duration.as_millis()
+            duration_ms
         );
     }
     

@@ -3,7 +3,6 @@ import bs58 from 'bs58'
 import {
   encrypt,
   decrypt,
-  generateSalt,
   uint8ArrayToBase64,
   base64ToUint8Array,
   arrayBufferToBase64,

@@ -27,6 +27,8 @@ pub struct HephaestusCache {
     cache: Arc<RwLock<HashMap<String, CacheEntry>>>,
     max_size_mb: usize,
     default_ttl: Duration,
+    hits: Arc<std::sync::atomic::AtomicU64>,
+    misses: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl HephaestusCache {
@@ -35,6 +37,8 @@ impl HephaestusCache {
             cache: Arc::new(RwLock::new(HashMap::new())),
             max_size_mb,
             default_ttl: Duration::from_secs(default_ttl_seconds),
+            hits: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            misses: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
@@ -45,14 +49,17 @@ impl HephaestusCache {
             // Check if expired
             if Utc::now() > entry.content.expires_at {
                 cache.remove(key);
+                self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return None;
             }
             
             entry.last_accessed = Instant::now();
             entry.access_count += 1;
+            self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Some(entry.content.clone());
         }
         
+        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         None
     }
 
@@ -121,11 +128,20 @@ impl HephaestusCache {
             total_accesses += entry.access_count;
         }
         
+        let hits = self.hits.load(std::sync::atomic::Ordering::Relaxed);
+        let misses = self.misses.load(std::sync::atomic::Ordering::Relaxed);
+        let total_requests = hits + misses;
+        let hit_rate = if total_requests > 0 {
+            hits as f64 / total_requests as f64
+        } else {
+            0.0
+        };
+        
         CacheStats {
             total_entries,
             total_size_mb: total_size as f64 / 1_048_576.0,
             total_accesses,
-            hit_rate: 0.0, // Would need to track misses separately
+            hit_rate,
         }
     }
 

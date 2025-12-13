@@ -35,6 +35,7 @@ Required variables:
 
 1. **Start MongoDB with Docker:**
 
+
 ```bash
 docker-compose up mongodb -d
 ```
@@ -173,9 +174,25 @@ npx shadow-sdk deploy
 
 ### Frontend build errors
 
-- Delete `node_modules` and `.next` folders
-- Run `npm install` again
-- Check Node.js version (should be 20+)
+**React App (`app/`):**
+- If you see "Big integer literals are not available" error:
+  - This is fixed in `app/vite.config.ts` - ensure it has `target: ['es2020', 'chrome90', 'safari14']` and `esbuild: { target: 'es2020' }`
+- If you see import errors for deleted files:
+  - Check `app/src/main.tsx` - removed imports should be cleaned up
+- General fixes:
+  - Delete `node_modules` and `dist` folders
+  - Run `npm install` again
+  - Check Node.js version (should be 20+)
+
+**Vue Desktop (`desktop/`):**
+- If `vue-tsc` crashes:
+  - Build script now uses `vite build` directly (type checking separated)
+  - Run `npm run type-check` separately if needed
+- General fixes:
+  - Delete `node_modules` and `dist` folders
+  - Run `npm install` again
+
+See `COMMAND_FIXES.md` for detailed information on all fixed commands.
 
 ### Solana program deployment fails
 

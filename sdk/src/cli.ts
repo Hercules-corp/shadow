@@ -37,11 +37,10 @@ program
     try {
       await deployFull(
         options.network,
-          options.storage,
-          options.domain,
-          options.mintToken
-        )
-      }
+        options.storage,
+        options.domain,
+        options.mintToken
+      )
     } catch (error) {
       console.error(chalk.red("Error:"), error)
       process.exit(1)

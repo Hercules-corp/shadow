@@ -193,9 +193,39 @@ impl AthenaIndexer {
         format!("{:x}", hasher.finalize())
     }
 
-    fn detect_language(_content: &str) -> Option<String> {
-        // Simplified language detection
-        Some("en".to_string())
+    fn detect_language(content: &str) -> Option<String> {
+        // Simple language detection based on common words
+        let content_lower = content.to_lowercase();
+        
+        // English common words
+        let english_words = ["the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"];
+        let english_count = english_words.iter()
+            .filter(|&&word| content_lower.contains(word))
+            .count();
+        
+        // Spanish common words
+        let spanish_words = ["el", "la", "de", "que", "y", "a", "en", "un", "ser", "se", "no", "haber"];
+        let spanish_count = spanish_words.iter()
+            .filter(|&&word| content_lower.contains(word))
+            .count();
+        
+        // French common words
+        let french_words = ["le", "de", "et", "à", "un", "il", "être", "et", "en", "avoir", "que", "pour"];
+        let french_count = french_words.iter()
+            .filter(|&&word| content_lower.contains(word))
+            .count();
+        
+        // Determine language based on word frequency
+        if english_count >= spanish_count && english_count >= french_count && english_count > 0 {
+            Some("en".to_string())
+        } else if spanish_count >= french_count && spanish_count > 0 {
+            Some("es".to_string())
+        } else if french_count > 0 {
+            Some("fr".to_string())
+        } else {
+            // Default to English if no matches
+            Some("en".to_string())
+        }
     }
 
     fn categorize_content(content: &str) -> Vec<String> {
@@ -228,10 +258,51 @@ impl AthenaIndexer {
         Ok(1.0)
     }
 
-    async fn calculate_trust_score(&self, _domain: &str) -> Result<f64, mongodb::error::Error> {
-        // Calculate trust based on verification, age, etc.
-        // Simplified for now
-        Ok(0.8)
+    async fn calculate_trust_score(&self, domain: &str) -> Result<f64, mongodb::error::Error> {
+        use mongodb::bson::doc;
+        use chrono::Utc;
+        
+        // Get domain verification status
+        let domains_col = self.db.collection::<mongodb::bson::Document>("domains");
+        let domain_filter = doc! { "_id": domain };
+        let domain_doc = domains_col.find_one(domain_filter, None).await?;
+        
+        let mut trust_score = 0.5; // Base score
+        
+        if let Some(domain_data) = domain_doc {
+            // Factor 1: Verification status (+0.3 if verified)
+            if domain_data.get_bool("verified").unwrap_or(false) {
+                trust_score += 0.3;
+            }
+            
+            // Factor 2: Domain age (older = more trusted, max +0.2)
+            if let Ok(created_at) = domain_data.get_datetime("created_at") {
+                let age_seconds = Utc::now().timestamp() - (created_at.timestamp_millis() / 1000);
+                let age_days = age_seconds / 86400;
+                let age_bonus = (age_days as f64 / 365.0).min(0.2_f64); // Max 0.2 for 1+ year
+                trust_score += age_bonus;
+            }
+        }
+        
+        // Factor 3: Visit patterns (from analytics)
+        let analytics_col = self.db.collection::<mongodb::bson::Document>("analytics");
+        let analytics_filter = doc! { "_id": domain };
+        if let Ok(Some(analytics)) = analytics_col.find_one(analytics_filter, None).await {
+            // More unique visitors = more trusted (max +0.1)
+            if let Ok(visitors) = analytics.get_i64("unique_visitors") {
+                let visitor_bonus = (visitors as f64 / 1000.0).min(0.1_f64);
+                trust_score += visitor_bonus;
+            }
+            
+            // Lower bounce rate = more trusted (max +0.1)
+            if let Ok(bounce_rate) = analytics.get_f64("bounce_rate") {
+                let bounce_bonus = (1.0_f64 - bounce_rate).min(0.1_f64);
+                trust_score += bounce_bonus;
+            }
+        }
+        
+        // Clamp between 0.0 and 1.0
+        Ok(trust_score.min(1.0).max(0.0))
     }
 }
 

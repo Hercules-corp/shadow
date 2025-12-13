@@ -1,8 +1,8 @@
-export * from "./commands/init"// Hermes SDK - Shadow Development Tools
+// Hermes SDK - Shadow Development Tools
 // All circuits (functions) are named after Greek gods
 
-export * from "./commands/deploy"
-export { deploy, init } from "./commands"
+// Commands are now in cli.ts directly
+// init and deploy have been replaced with initFull and deployFull
 
 // Export all circuits
 export * from "./circuits"

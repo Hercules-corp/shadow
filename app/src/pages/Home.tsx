@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react"
 import { useAuth } from "@/components/wallet-provider"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -7,7 +6,7 @@ import { hasStoredWallet } from "@/lib/wallet"
 import { useNavigate } from "react-router-dom"
 
 export default function Home() {
-  const { isConnected, walletAddress, isLoading, createNewWallet, unlockWallet, logout } = useAuth()
+  const { isConnected, walletAddress, isLoading, unlockWallet, logout } = useAuth()
   const navigate = useNavigate()
 
   return (

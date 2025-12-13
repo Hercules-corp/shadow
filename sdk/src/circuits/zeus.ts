@@ -48,7 +48,7 @@ export async function getProgramData(
 }
 
 /**
- * Verify wallet owns a program
+ * Verify wallet owns a program by checking upgrade authority
  */
 export async function verifyOwnership(
   programAddress: string,
@@ -56,12 +56,45 @@ export async function verifyOwnership(
   rpcUrl: string = DEFAULT_RPC_URL
 ): Promise<boolean> {
   try {
-    const programData = await getProgramData(programAddress, rpcUrl)
-    if (!programData) return false
+    const connection = new Connection(rpcUrl, "confirmed")
+    const programPubkey = new PublicKey(programAddress)
+    const ownerPubkeyObj = new PublicKey(ownerPubkey)
     
-    // Check if the owner matches
-    // In production, you'd check the program's owner account
-    return true // Simplified - implement actual ownership check
+    // Get program account info
+    const accountInfo = await connection.getAccountInfo(programPubkey)
+    if (!accountInfo || !accountInfo.executable) {
+      return false
+    }
+    
+    // For Solana programs, check the upgrade authority
+    // The program's upgrade authority is stored in the program data account
+    // We need to derive the program data address
+    const [programDataAddress] = PublicKey.findProgramAddressSync(
+      [programPubkey.toBuffer()],
+      new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111")
+    )
+    
+    try {
+      const programDataInfo = await connection.getAccountInfo(programDataAddress)
+      if (!programDataInfo) {
+        // If no program data account, check if owner is the program itself (immutable)
+        return accountInfo.owner.equals(programPubkey)
+      }
+      
+      // Parse upgrade authority from program data (offset 12, 32 bytes)
+      if (programDataInfo.data.length < 44) {
+        return false
+      }
+      
+      const upgradeAuthorityBytes = programDataInfo.data.slice(12, 44)
+      const upgradeAuthority = new PublicKey(upgradeAuthorityBytes)
+      
+      // Check if the provided owner is the upgrade authority
+      return upgradeAuthority.equals(ownerPubkeyObj)
+    } catch {
+      // Fallback: check if owner matches program owner
+      return accountInfo.owner.equals(ownerPubkeyObj)
+    }
   } catch {
     return false
   }

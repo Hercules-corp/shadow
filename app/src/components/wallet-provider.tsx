@@ -7,8 +7,6 @@ import {
   loadWallet,
   getStoredWalletAddress,
   hasStoredWallet,
-  deleteWallet,
-  verifyPassword,
 } from "@/lib/wallet"
 import { PasswordDialog } from "./password-dialog"
 
@@ -127,15 +125,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // deleteWallet()
   }
 
-  const handleDeleteWallet = async () => {
-    if (confirm("Are you sure you want to delete your wallet? This cannot be undone!")) {
-      deleteWallet()
-      setWallet(null)
-      setWalletAddress(null)
-      setPasswordDialogMode("create")
-      setShowPasswordDialog(true)
-    }
-  }
 
   return (
     <WalletContext.Provider

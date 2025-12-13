@@ -121,6 +121,9 @@ async fn main() -> anyhow::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(Logger::default())
+            .wrap(actix_web::middleware::from_fn(middleware::request_id_middleware))
+            .wrap(actix_web::middleware::from_fn(middleware::security_headers_middleware))
+            .wrap(actix_web::middleware::from_fn(middleware::timing_middleware))
             .app_data(web::Data::from(Arc::clone(&db_clone)))
             .app_data(web::Data::new(solana_rpc_clone.clone()))
             .app_data(web::Data::new(solana_ws_clone.clone()))
@@ -177,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
                     // Hephaestus cache endpoints
                     .route("/cache/stats", web::get().to(handlers::get_cache_stats))
                     .route("/cache/clear", web::post().to(handlers::clear_cache))
+                    .route("/metrics", web::get().to(handlers::get_metrics))
                     .route("/ws", web::get().to(websocket::ws_handler))
             )
     })

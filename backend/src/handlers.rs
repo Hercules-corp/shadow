@@ -40,9 +40,10 @@ pub struct ProfileResponse {
 pub async fn search_profiles(
     db: web::Data<Database>,
     query: web::Query<SearchQuery>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     artemis: web::Data<ArtemisRateLimiter>,
     req: HttpRequest,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     // Rate limiting
     let client_ip = req.peer_addr().map(|a| a.ip().to_string());
@@ -54,6 +55,7 @@ pub async fn search_profiles(
     ApolloValidator::validate_search_query(&query.q)?;
     let limit = ApolloValidator::validate_limit(query.limit)?;
 
+    metrics.record_database_query();
     let users = db::search_users(&db, &query.q, limit)
         .await?;
 
@@ -63,9 +65,11 @@ pub async fn search_profiles(
 pub async fn get_profile(
     db: web::Data<Database>,
     path: web::Path<String>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let wallet = path.into_inner();
     
+    metrics.record_database_query();
     match db::get_user(&db, &wallet).await? {
         Some(user) => {
             Ok(HttpResponse::Ok().json(ProfileResponse {
@@ -91,7 +95,7 @@ pub async fn create_profile_route(
     db: web::Data<Database>,
     body: web::Json<CreateProfileRequest>,
     ares: web::Data<AresAuth>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
 ) -> ActixResult<HttpResponse, ShadowError> {
     // Validate wallet address
@@ -108,7 +112,7 @@ pub async fn create_profile_route(
                     return Err(ShadowError::Unauthorized.into());
                 }
                 auth.verify(&ares)
-                    .map_err(|e| ShadowError::Unauthorized)?;
+                    .map_err(|_e| ShadowError::Unauthorized)?;
             }
         }
     }
@@ -131,7 +135,7 @@ pub async fn update_profile(
     path: web::Path<String>,
     body: web::Json<UpdateProfileRequest>,
     ares: web::Data<AresAuth>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let wallet = path.into_inner();
@@ -189,7 +193,9 @@ pub struct RegisterSiteRequest {
 pub async fn search_sites(
     db: web::Data<Database>,
     query: web::Query<SearchQuery>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
+    metrics.record_database_query();
     let sites = db::search_sites(&db, &query.q, query.limit.unwrap_or(10))
         .await?;
 
@@ -199,9 +205,11 @@ pub async fn search_sites(
 pub async fn get_site(
     db: web::Data<Database>,
     path: web::Path<String>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let program_address = path.into_inner();
     
+    metrics.record_database_query();
     let site = db::get_site(&db, &program_address).await?
         .ok_or_else(|| ShadowError::NotFound("Site not found".to_string()))?;
 
@@ -213,7 +221,7 @@ pub async fn register_site(
     body: web::Json<RegisterSiteRequest>,
     solana_rpc: web::Data<String>,
     ares: web::Data<AresAuth>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
 ) -> ActixResult<HttpResponse, ShadowError> {
     // Validate inputs
@@ -282,9 +290,11 @@ pub async fn get_site_content(
     pinata: web::Data<PinataStorage>,
     bundlr: web::Data<BundlrStorage>,
     path: web::Path<String>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let program_address = path.into_inner();
     
+    metrics.record_database_query();
     let site = db::get_site(&db, &program_address).await?
         .ok_or_else(|| ShadowError::NotFound("Site not found".to_string()))?;
 
@@ -330,9 +340,11 @@ pub async fn upload_arweave(
 pub async fn search_solana(
     solana_rpc_url: web::Data<String>,
     query: web::Query<SearchQuery>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let client = SolanaClient::new(solana_rpc_url.to_string());
     
+    metrics.record_solana_rpc();
     // Try to parse as pubkey first
     if let Ok(account) = client.search_account(&query.q) {
         if let Some(acc) = account {
@@ -372,7 +384,7 @@ pub async fn register_domain(
     olympus: web::Data<OlympusCA>,
     body: web::Json<RegisterDomainRequest>,
     ares: web::Data<AresAuth>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
 ) -> ActixResult<HttpResponse, ShadowError> {
     // Validate inputs
@@ -424,7 +436,7 @@ pub async fn get_domain(
 pub async fn search_domains(
     olympus: web::Data<OlympusCA>,
     query: web::Query<SearchQuery>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     ApolloValidator::validate_search_query(&query.q)?;
     let limit = ApolloValidator::validate_limit(query.limit)?;
@@ -440,7 +452,7 @@ pub async fn update_domain(
     path: web::Path<String>,
     body: web::Json<RegisterDomainRequest>,
     ares: web::Data<AresAuth>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let domain = path.into_inner();
@@ -486,6 +498,8 @@ pub async fn verify_domain(
     path: web::Path<String>,
     ares: web::Data<AresAuth>,
     req: HttpRequest,
+    solana_rpc_url: web::Data<String>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let domain = path.into_inner();
     
@@ -507,6 +521,24 @@ pub async fn verify_domain(
     
     auth.verify(&ares)
         .map_err(|_| ShadowError::Unauthorized)?;
+
+    // On-chain verification: Check program exists and is executable
+    metrics.record_solana_rpc();
+    let client = SolanaClient::new(solana_rpc_url.to_string());
+    match client.search_program(&domain_data.program_address) {
+        Ok(Some(program_info)) => {
+            // Program exists and is executable
+            if program_info.data_len == 0 {
+                return Err(ShadowError::BadRequest("Program account is empty".to_string()).into());
+            }
+        }
+        Ok(None) => {
+            return Err(ShadowError::BadRequest("Program not found or not executable".to_string()).into());
+        }
+        Err(e) => {
+            return Err(ShadowError::BadRequest(format!("Solana RPC error: {}", e)).into());
+        }
+    }
 
     // Mark as verified (after on-chain verification)
     olympus.verify_domain(&domain).await
@@ -544,7 +576,7 @@ pub struct IndexContentRequest {
 pub async fn search_content(
     athena: web::Data<AthenaIndexer>,
     query: web::Query<SearchQuery>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     ApolloValidator::validate_search_query(&query.q)?;
     let limit = ApolloValidator::validate_limit(query.limit)?;
@@ -558,7 +590,7 @@ pub async fn search_content(
 pub async fn index_content(
     athena: web::Data<AthenaIndexer>,
     body: web::Json<IndexContentRequest>,
-    apollo: web::Data<ApolloValidator>,
+    _apollo: web::Data<ApolloValidator>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     ApolloValidator::validate_domain(&body.domain)?;
     ApolloValidator::validate_pubkey(&body.program_address)?;
@@ -806,6 +838,11 @@ pub async fn get_analytics(
     path: web::Path<String>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     let domain = path.into_inner();
+    
+    // Update analytics summary before returning
+    prometheus.update_analytics_summary(&domain).await
+        .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
+    
     let analytics = prometheus.get_analytics(&domain).await
         .map_err(|e| ShadowError::BadRequest(e.to_string()))?;
     
@@ -857,7 +894,9 @@ pub async fn record_performance(
 
 pub async fn get_cache_stats(
     hephaestus: web::Data<HephaestusCache>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
+    metrics.record_cache_hit(); // Cache stats access is a cache operation
     let stats = hephaestus.get_stats().await;
     Ok(HttpResponse::Ok().json(stats))
 }

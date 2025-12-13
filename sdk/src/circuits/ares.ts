@@ -80,18 +80,44 @@ export async function createAuthHeader(
 }
 
 /**
- * Verify a signature (client-side verification)
+ * Verify a signature (client-side verification using ed25519)
  */
 export function verifySignature(
   message: string,
   signature: string,
   pubkey: string
 ): boolean {
-  // This is a simplified check - actual verification happens on backend
   try {
-    new PublicKey(pubkey)
-    bs58.decode(signature)
-    return true
+    const pubkeyObj = new PublicKey(pubkey)
+    const signatureBytes = bs58.decode(signature)
+    
+    if (signatureBytes.length !== 64) {
+      return false
+    }
+    
+    // Reconstruct the message with Solana offchain prefix
+    const messageBytes = new TextEncoder().encode(message)
+    const prefix = new TextEncoder().encode("\xffsolana offchain message")
+    const lengthBytes = new Uint8Array([messageBytes.length])
+    const fullMessage = new Uint8Array([
+      ...prefix,
+      ...lengthBytes,
+      ...messageBytes,
+    ])
+    
+    // Hash the message (SHA256)
+    const crypto = require("crypto")
+    const messageHash = crypto.createHash("sha256").update(fullMessage).digest()
+    
+    // Verify using tweetnacl ed25519
+    const publicKeyBytes = pubkeyObj.toBytes()
+    const verified = nacl.sign.detached.verify(
+      messageHash,
+      signatureBytes,
+      publicKeyBytes
+    )
+    
+    return verified
   } catch {
     return false
   }
