@@ -5,6 +5,8 @@ mod handlers;
 mod storage;
 mod websocket;
 mod solana;
+mod solana_ws;
+mod anchor_client;
 mod ares;
 mod olympus;
 mod apollo;
@@ -107,6 +109,26 @@ async fn main() -> anyhow::Result<()> {
     // Initialize metrics collector
     let metrics = Arc::new(metrics::MetricsCollector::new());
     
+    // Initialize Anchor client for on-chain verification
+    let anchor_client = Arc::new(
+        anchor_client::AnchorClient::new(solana_rpc_url.clone())
+            .map_err(|e| anyhow::anyhow!("Failed to create Anchor client: {}", e))?
+    );
+    
+    // Initialize Solana WebSocket client
+    let hermes_broker = Arc::new(websocket::HermesBroker::new());
+    let solana_ws_client = Arc::new(
+        solana_ws::SolanaWebSocketClient::new(solana_ws_clone.clone(), Arc::clone(&hermes_broker))
+    );
+    
+    // Start Solana WebSocket connection (non-blocking)
+    let ws_client_clone = Arc::clone(&solana_ws_client);
+    tokio::spawn(async move {
+        if let Err(e) = ws_client_clone.start().await {
+            eprintln!("Failed to start Solana WebSocket client: {}", e);
+        }
+    });
+    
     // Load configuration
     let config = config::ShadowConfig::from_env()
         .map_err(|e| anyhow::anyhow!("Config error: {}", e))?;
@@ -138,6 +160,8 @@ async fn main() -> anyhow::Result<()> {
             .app_data(web::Data::from(Arc::clone(&prometheus)))
             .app_data(web::Data::from(Arc::clone(&hephaestus)))
             .app_data(web::Data::from(Arc::clone(&metrics)))
+            .app_data(web::Data::from(Arc::clone(&anchor_client)))
+            .app_data(web::Data::from(Arc::clone(&hermes_broker)))
             .app_data(web::Data::new(config.clone()))
             .service(
                 web::scope("/api")

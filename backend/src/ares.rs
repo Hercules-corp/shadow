@@ -55,10 +55,8 @@ impl AresAuth {
             return Err("Signature must be 64 bytes".to_string());
         }
         
-        // Convert signature bytes to fixed-size array
-        let mut sig_array = [0u8; 64];
-        sig_array.copy_from_slice(&sig_bytes[..64]);
-        let ed_sig = EdSignature::from_bytes(&sig_array)
+        // Use try_from for ed25519-dalek v1.0 compatibility
+        let ed_sig = EdSignature::try_from(&sig_bytes[..64])
             .map_err(|e| format!("Invalid signature: {}", e))?;
 
         Ok(public_key.verify(&message_hash, &ed_sig).is_ok())

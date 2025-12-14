@@ -31,6 +31,7 @@ pub enum HermesResponse {
     Error { message: String },
 }
 
+#[derive(Clone, Debug)]
 pub struct HermesBroker {
     // Broadcast channels for different topics
     // In production, this would be backed by Redis or similar

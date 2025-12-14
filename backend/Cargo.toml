@@ -29,9 +29,6 @@ async-trait = "0.1"
 sha2 = "0.10"
 dashmap = "5.5"
 ed25519-dalek = "1.0"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
+hex = "0.4"
+tokio-tungstenite = "0.21"
 

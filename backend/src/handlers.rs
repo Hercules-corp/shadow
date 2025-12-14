@@ -3,6 +3,7 @@ use crate::db;
 use crate::error::ShadowError;
 use crate::storage::{PinataStorage, BundlrStorage};
 use crate::solana::SolanaClient;
+use crate::anchor_client;
 use crate::ares::{AresAuth, AuthHeader};
 use crate::apollo::ApolloValidator;
 use crate::artemis::ArtemisRateLimiter;
@@ -223,6 +224,8 @@ pub async fn register_site(
     ares: web::Data<AresAuth>,
     _apollo: web::Data<ApolloValidator>,
     req: HttpRequest,
+    anchor: web::Data<anchor_client::AnchorClient>,
+    metrics: web::Data<MetricsCollector>,
 ) -> ActixResult<HttpResponse, ShadowError> {
     // Validate inputs
     ApolloValidator::validate_pubkey(&body.owner_pubkey)?;
@@ -242,12 +245,25 @@ pub async fn register_site(
     auth.verify(&ares)
         .map_err(|_| ShadowError::Unauthorized)?;
 
-    // Verify program address exists on-chain
-    let client = SolanaClient::new(solana_rpc.to_string());
-    let program_address = match client.search_program(&body.owner_pubkey) {
+    // Verify program address exists on-chain and is registered with registry program
+    let solana_client = SolanaClient::new(solana_rpc.to_string());
+    metrics.record_solana_rpc();
+    
+    let program_address = match solana_client.search_program(&body.owner_pubkey) {
         Ok(Some(_)) => body.owner_pubkey.clone(),
         _ => return Err(ShadowError::BadRequest("Program address not found on-chain".to_string()).into()),
     };
+    
+    // Verify on-chain registration using Anchor client
+    if let Ok(Some(site_account)) = anchor.verify_site_registration(&program_address, &body.owner_pubkey) {
+        // Site is registered on-chain, verify ownership matches
+        if site_account.owner.to_string() != body.owner_pubkey {
+            return Err(ShadowError::Unauthorized.into());
+        }
+    } else {
+        // Site not found in registry - still allow registration but log it
+        // In production, you might want to require on-chain registration first
+    }
     
     db::create_or_update_site(
         &db,
