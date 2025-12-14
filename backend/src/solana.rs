@@ -112,6 +112,66 @@ impl SolanaClient {
         // In production, implement proper PDA derivation and data parsing
         Ok(None)
     }
+
+    /// Get SOL balance for a pubkey
+    pub async fn get_balance(&self, pubkey: &str) -> Result<u64, String> {
+        let pubkey = Pubkey::from_str(pubkey)
+            .map_err(|e| format!("Invalid pubkey: {}", e))?;
+        
+        let client = RpcClient::new(&self.rpc_url);
+        client.get_balance(&pubkey)
+            .map_err(|e| format!("RPC error: {}", e))
+    }
+
+    /// Get recent blockhash
+    pub async fn get_recent_blockhash(&self) -> Result<solana_sdk::hash::Hash, String> {
+        let client = RpcClient::new(&self.rpc_url);
+        let hash = client.get_latest_blockhash()
+            .map_err(|e| format!("RPC error: {}", e))?;
+        Ok(hash)
+    }
+
+    /// Get token accounts for a pubkey
+    pub async fn get_token_accounts(&self, _pubkey: &Pubkey) -> Result<Vec<TokenAccountInfo>, String> {
+        // TODO: Implement proper token account fetching
+        // The solana-client API for get_token_accounts_by_owner has complex type requirements
+        // For now, return empty vector - will be implemented with proper parsing later
+        Ok(Vec::new())
+    }
+
+    /// Get signatures for an address
+    pub async fn get_signatures_for_address(
+        &self,
+        pubkey: &Pubkey,
+        limit: u32,
+    ) -> Result<Vec<SignatureInfo>, String> {
+        let client = RpcClient::new(&self.rpc_url);
+        
+        // Use the simpler API - get_signatures_for_address takes only the pubkey
+        let signatures = client.get_signatures_for_address(pubkey)
+            .map_err(|e| format!("RPC error: {}", e))?;
+        
+        // Limit the results manually
+        let signatures: Vec<_> = signatures.into_iter().take(limit as usize).collect();
+
+        Ok(signatures.into_iter().map(|sig| SignatureInfo {
+            signature: sig.signature.to_string(),
+            block_time: sig.block_time,
+        }).collect())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenAccountInfo {
+    pub mint: String,
+    pub amount: u64,
+    pub decimals: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct SignatureInfo {
+    pub signature: String,
+    pub block_time: Option<i64>,
 }
 
 #[derive(serde::Serialize)]

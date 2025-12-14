@@ -19,6 +19,14 @@ mod utils;
 mod middleware;
 mod config;
 mod metrics;
+mod zeus;
+mod poseidon;
+mod dionysus;
+mod aphrodite;
+mod hestia;
+mod plutus;
+mod hades;
+mod wallet_handlers;
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
@@ -206,6 +214,28 @@ async fn main() -> anyhow::Result<()> {
                     .route("/cache/clear", web::post().to(handlers::clear_cache))
                     .route("/metrics", web::get().to(handlers::get_metrics))
                     .route("/ws", web::get().to(websocket::ws_handler))
+                    // Wallet dApp endpoints (Phantom-like)
+                    // Zeus - Wallet Management
+                    .route("/wallet/create", web::post().to(wallet_handlers::create_wallet))
+                    .route("/wallet/import", web::post().to(wallet_handlers::import_wallet))
+                    .route("/wallet/list", web::get().to(wallet_handlers::list_wallets))
+                    .route("/wallet/active", web::get().to(wallet_handlers::get_active_wallet))
+                    .route("/wallet/active", web::post().to(wallet_handlers::set_active_wallet))
+                    // Poseidon - Transaction Signing
+                    .route("/wallet/transaction", web::post().to(wallet_handlers::create_transaction))
+                    .route("/wallet/transaction/sign", web::post().to(wallet_handlers::sign_transaction))
+                    .route("/wallet/transactions/pending", web::get().to(wallet_handlers::get_pending_transactions))
+                    // Dionysus - Tokens
+                    .route("/wallet/{pubkey}/tokens", web::get().to(wallet_handlers::get_token_balances))
+                    // Aphrodite - NFTs
+                    .route("/wallet/{pubkey}/nfts", web::get().to(wallet_handlers::get_nfts))
+                    // Hestia - dApp Connections
+                    .route("/wallet/dapp/connect", web::post().to(wallet_handlers::connect_dapp))
+                    .route("/wallet/dapp/connections", web::get().to(wallet_handlers::get_connections))
+                    .route("/wallet/dapp/disconnect", web::post().to(wallet_handlers::disconnect_dapp))
+                    // Plutus - Portfolio
+                    .route("/wallet/{pubkey}/portfolio", web::get().to(wallet_handlers::get_portfolio))
+                    .route("/wallet/{pubkey}/history", web::get().to(wallet_handlers::get_transaction_history))
             )
     })
     .bind(("0.0.0.0", port))?
