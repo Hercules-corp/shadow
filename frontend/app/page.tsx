@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { AppleSpotlight } from "@/components/ui/apple-spotlight"
-import { useAuth } from "@/components/privy-provider"
+import { useAuth } from "@/components/athena-provider"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { shortenAddress } from "@/lib/utils"
@@ -24,7 +24,26 @@ async function search(query: string): Promise<SearchResult[]> {
   const results: SearchResult[] = []
 
   try {
-    // Search profiles
+    // Token-only browser: Validate token address first
+    const { parseTokenAddress } = await import("@/lib/token-validation")
+    const parsed = parseTokenAddress(query.trim())
+    
+    if (parsed) {
+      // Valid token address - navigate directly to token page
+      const { tokenAddress, sublink } = parsed
+      const subpath = sublink ? `/${sublink}` : ""
+      results.push({
+        id: `token-${tokenAddress}`,
+        label: shortenAddress(tokenAddress) + (sublink ? `/${sublink}` : ""),
+        icon: <Globe className="w-4 h-4" />,
+        link: `/token/${tokenAddress}${subpath}`,
+        description: sublink ? `Sublink: ${sublink}` : "Token address",
+        type: "site" as const,
+      })
+      return results
+    }
+
+    // Fallback: Search profiles and sites (for partial matches)
     const profilesRes = await fetch(`${backendUrl}/api/profiles/search?q=${encodeURIComponent(query)}&limit=5`)
     if (profilesRes.ok) {
       const profiles = await profilesRes.json()
@@ -38,21 +57,7 @@ async function search(query: string): Promise<SearchResult[]> {
       })))
     }
 
-    // Search sites
-    const sitesRes = await fetch(`${backendUrl}/api/sites/search?q=${encodeURIComponent(query)}&limit=5`)
-    if (sitesRes.ok) {
-      const sites = await sitesRes.json()
-      results.push(...sites.map((s: any) => ({
-        id: `site-${s.program_address}`,
-        label: s.name || shortenAddress(s.program_address),
-        icon: <Globe className="w-4 h-4" />,
-        link: `/site/${s.program_address}`,
-        description: s.description || "Site on Shadow",
-        type: "site" as const,
-      })))
-    }
-
-    // Search Solana
+    // Search Solana for token addresses
     const solanaRes = await fetch(`${backendUrl}/api/solana/search?q=${encodeURIComponent(query)}`)
     if (solanaRes.ok) {
       const solana = await solanaRes.json()
@@ -61,8 +66,8 @@ async function search(query: string): Promise<SearchResult[]> {
           id: `solana-${solana.data.address}`,
           label: shortenAddress(solana.data.address),
           icon: solana.type === "program" ? <Globe className="w-4 h-4" /> : <User className="w-4 h-4" />,
-          link: solana.type === "program" ? `/site/${solana.data.address}` : `/profile/${solana.data.address}`,
-          description: solana.type === "program" ? "Solana program" : "Solana account",
+          link: solana.type === "program" ? `/token/${solana.data.address}` : `/profile/${solana.data.address}`,
+          description: solana.type === "program" ? "Token/Site" : "Solana account",
           type: solana.type === "program" ? "site" : "profile",
         })
       }
@@ -151,11 +156,11 @@ export default function Home() {
               transition={{ delay: 0.6 }}
             >
               <Button
-                onClick={login}
+                onClick={() => login()}
                 size="lg"
                 className="text-lg px-8 py-6 rounded-xl"
               >
-                Sign in with Google
+                Create Athena Wallet
               </Button>
             </motion.div>
           ) : (

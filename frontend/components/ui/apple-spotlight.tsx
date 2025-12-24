@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Search, X, User, Globe, Upload, Settings } from "lucide-react"
+import { Search, X, User, Globe, Upload, Settings, AlertCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { validateTokenAddress, parseTokenAddress } from "@/lib/token-validation"
 
 interface Shortcut {
   label: string
@@ -38,6 +39,7 @@ export function AppleSpotlight({
   const [results, setResults] = React.useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const [validationError, setValidationError] = React.useState<string | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -79,9 +81,22 @@ export function AppleSpotlight({
     const search = async () => {
       if (!query.trim()) {
         setResults([])
+        setValidationError(null)
         return
       }
 
+      // Validate token address for token-only browser
+      const parsed = parseTokenAddress(query.trim())
+      if (!parsed) {
+        const validation = validateTokenAddress(query.trim())
+        if (!validation.valid) {
+          setValidationError(validation.error || "Invalid token address")
+          setResults([])
+          return
+        }
+      }
+
+      setValidationError(null)
       setIsSearching(true)
       try {
         if (onSearch) {
@@ -171,7 +186,7 @@ export function AppleSpotlight({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Search profiles, sites, or navigate..."
+                    placeholder="Enter token address (e.g., 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM)..."
                     className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
                   />
                   {query && (
@@ -185,7 +200,21 @@ export function AppleSpotlight({
                 </div>
 
                 <div className="max-h-96 overflow-y-auto">
-                  {isSearching ? (
+                  {validationError ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="px-4 py-4 bg-destructive/10 border-l-4 border-destructive"
+                    >
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">{validationError}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 ml-6">
+                        Shadow browser only accepts SPL token addresses as domains.
+                      </p>
+                    </motion.div>
+                  ) : isSearching ? (
                     <div className="px-4 py-8 text-center text-muted-foreground">
                       Searching...
                     </div>

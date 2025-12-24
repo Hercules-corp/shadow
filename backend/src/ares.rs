@@ -43,11 +43,12 @@ impl AresAuth {
         hasher.update(&message_with_prefix);
         let message_hash = hasher.finalize();
 
-        // Verify using ed25519 verification
+        // Verify using ed25519-dalek v1.0
         // Solana signatures are ed25519, verify against the message hash
         use ed25519_dalek::{Verifier, PublicKey, Signature as EdSignature};
         
-        let public_key = PublicKey::from_bytes(&pubkey_parsed.to_bytes())
+        let pub_bytes: [u8; 32] = pubkey_parsed.to_bytes();
+        let public_key = PublicKey::from_bytes(&pub_bytes)
             .map_err(|e| format!("Invalid public key: {}", e))?;
         
         let sig_bytes = sig.as_ref();
@@ -55,11 +56,15 @@ impl AresAuth {
             return Err("Signature must be 64 bytes".to_string());
         }
         
-        // Use try_from for ed25519-dalek v1.0 compatibility
-        let ed_sig = EdSignature::try_from(&sig_bytes[..64])
+        // Convert signature bytes to ed25519-dalek Signature
+        let sig_array: [u8; 64] = sig_bytes[..64]
+            .try_into()
+            .map_err(|_| "Failed to convert signature to array".to_string())?;
+        
+        let ed_sig = EdSignature::from_bytes(&sig_array)
             .map_err(|e| format!("Invalid signature: {}", e))?;
 
-        Ok(public_key.verify(&message_hash, &ed_sig).is_ok())
+        Ok(public_key.verify(&message_hash.as_slice(), &ed_sig).is_ok())
     }
 
     /// Create a challenge message for the client to sign

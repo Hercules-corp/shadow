@@ -27,6 +27,10 @@ mod hestia;
 mod plutus;
 mod hades;
 mod wallet_handlers;
+mod link_converter;
+
+#[path = "handlers_link.rs"]
+mod handlers_link;
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
@@ -236,6 +240,11 @@ async fn main() -> anyhow::Result<()> {
                     // Plutus - Portfolio
                     .route("/wallet/{pubkey}/portfolio", web::get().to(wallet_handlers::get_portfolio))
                     .route("/wallet/{pubkey}/history", web::get().to(wallet_handlers::get_transaction_history))
+                    // Link Converter - Token-only domains
+                    .route("/convert/link", web::post().to(handlers_link::convert_link))
+                    .route("/convert/general-token", web::post().to(handlers_link::create_general_token))
+                    .route("/convert/token/{token_mint}", web::get().to(handlers_link::get_url_from_token))
+                    .route("/convert/url", web::post().to(handlers_link::get_token_from_url))
             )
     })
     .bind(("0.0.0.0", port))?

@@ -38,4 +38,7 @@ spl-token = "4.0"
 base64 = "0.21"
 bincode = "1.3"
 solana-account-decoder = "1.18"
+# Tor integration - commented out until needed
+# arti-client = "0.37"
+# tor-rtcompat = "0.37"
 
